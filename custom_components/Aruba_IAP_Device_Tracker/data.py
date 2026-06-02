@@ -1,4 +1,4 @@
-"""Custom types for Aruba _AP_Device_Tracker."""
+"""Custom types for Aruba_AP_Device_Tracker."""
 
 from __future__ import annotations
 

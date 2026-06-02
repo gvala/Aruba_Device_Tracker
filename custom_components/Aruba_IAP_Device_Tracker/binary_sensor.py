@@ -1,4 +1,4 @@
-"""Binary sensor platform for Aruba _AP_Device_Tracker."""
+"""Binary sensor platform for Aruba_AP_Device_Tracker."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 ENTITY_DESCRIPTIONS = (
     BinarySensorEntityDescription(
-        key="Aruba _AP_Device_Tracker",
+        key="Aruba_AP_Device_Tracker",
         name="Aruba  AP Device Tracker Binary Sensor",
         device_class=BinarySensorDeviceClass.CONNECTIVITY,
     ),
@@ -44,7 +44,7 @@ async def async_setup_entry(
 
 
 class IntegrationBlueprintBinarySensor(IntegrationBlueprintEntity, BinarySensorEntity):
-    """Aruba _AP_Device_Tracker binary_sensor class."""
+    """Aruba_AP_Device_Tracker binary_sensor class."""
 
     def __init__(
         self,

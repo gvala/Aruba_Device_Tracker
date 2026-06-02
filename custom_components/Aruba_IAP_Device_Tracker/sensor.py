@@ -1,4 +1,4 @@
-"""Sensor platform for Aruba _AP_Device_Tracker."""
+"""Sensor platform for Aruba_AP_Device_Tracker."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 ENTITY_DESCRIPTIONS = (
     SensorEntityDescription(
-        key="Aruba _AP_Device_Tracker",
+        key="Aruba_AP_Device_Tracker",
         name="Integration Sensor",
         icon="mdi:format-quote-close",
     ),
@@ -40,7 +40,7 @@ async def async_setup_entry(
 
 
 class IntegrationBlueprintSensor(IntegrationBlueprintEntity, SensorEntity):
-    """Aruba _AP_Device_Tracker Sensor class."""
+    """Aruba_AP_Device_Tracker Sensor class."""
 
     def __init__(
         self,

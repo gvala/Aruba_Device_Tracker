@@ -1,4 +1,4 @@
-"""Switch platform for Aruba _AP_Device_Tracker."""
+"""Switch platform for Aruba_AP_Device_Tracker."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 ENTITY_DESCRIPTIONS = (
     SwitchEntityDescription(
-        key="Aruba _AP_Device_Tracker",
+        key="Aruba_AP_Device_Tracker",
         name="Integration Switch",
         icon="mdi:format-quote-close",
     ),
@@ -40,7 +40,7 @@ async def async_setup_entry(
 
 
 class IntegrationBlueprintSwitch(IntegrationBlueprintEntity, SwitchEntity):
-    """Aruba _AP_Device_Tracker switch class."""
+    """Aruba_AP_Device_Tracker switch class."""
 
     def __init__(
         self,

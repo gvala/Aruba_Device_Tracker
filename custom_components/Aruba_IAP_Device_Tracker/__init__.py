@@ -1,8 +1,8 @@
 """
-Custom integration to integrate Aruba _AP_Device_Tracker with Home Assistant.
+Custom integration to integrate Aruba_AP_Device_Tracker with Home Assistant.
 
 For more details about this integration, please refer to
-https://github.com/Jam3s97/Aruba _AP_Device_Tracker
+https://github.com/Jam3s97/Aruba_AP_Device_Tracker
 """
 
 from __future__ import annotations
