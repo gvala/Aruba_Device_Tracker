@@ -2,6 +2,7 @@
 Aruba IAP Device Tracker — Home Assistant Integration.
 https://github.com/Jam3s97/Aruba_AP_Device_Tracker
 """
+
 from __future__ import annotations
 
 import logging
@@ -12,7 +13,7 @@ from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME, Platfor
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .aruba_client import ArubaIAPClient
-from .const import DOMAIN, SCAN_INTERVAL_SECONDS
+from .const import CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, DOMAIN
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -23,6 +24,7 @@ LOGGER = logging.getLogger(__name__)
 PLATFORMS: list[Platform] = [
     Platform.DEVICE_TRACKER,
     Platform.SWITCH,
+    Platform.NUMBER,
 ]
 
 
@@ -42,12 +44,20 @@ async def async_setup_entry(
         LOGGER.error("Failed to connect to Aruba IAP at %s", entry.data[CONF_HOST])
         return False
 
-    coordinator = ArubaIAPCoordinator(hass=hass, client=client)
+    # Read poll interval from options (live) or data (initial setup)
+    scan_interval = entry.options.get(
+        CONF_SCAN_INTERVAL,
+        entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+    )
 
-    # Fetch initial data before setting up platforms
+    coordinator = ArubaIAPCoordinator(
+        hass=hass,
+        client=client,
+        scan_interval=scan_interval,
+    )
+
     await coordinator.async_config_entry_first_refresh()
 
-    # Store coordinator on the entry itself (modern HA pattern)
     entry.runtime_data = coordinator
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -77,12 +87,17 @@ async def async_reload_entry(
 class ArubaIAPCoordinator(DataUpdateCoordinator):
     """Coordinator that polls the Aruba IAP for connected client data."""
 
-    def __init__(self, hass: HomeAssistant, client: ArubaIAPClient) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        client: ArubaIAPClient,
+        scan_interval: int = DEFAULT_SCAN_INTERVAL,
+    ) -> None:
         super().__init__(
             hass=hass,
             logger=LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(seconds=SCAN_INTERVAL_SECONDS),
+            update_interval=timedelta(seconds=scan_interval),
         )
         self.client = client
 

@@ -12,37 +12,33 @@ from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import callback
 
 from .aruba_client import ArubaIAPClient
-from .const import CONF_TRACK_NEW, DEFAULT_TRACK_NEW, DOMAIN
+from .const import (
+    CONF_SCAN_INTERVAL,
+    CONF_TRACK_NEW,
+    DEFAULT_SCAN_INTERVAL,
+    DEFAULT_TRACK_NEW,
+    MIN_SCAN_INTERVAL,
+    MAX_SCAN_INTERVAL,
+    DOMAIN,
+)
 
-_LOGGER = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 
 
 async def _test_connection(hass, host, username, password) -> str | None:
-    """
-    Test connection AND verify the account can actually run API commands.
-    Returns None on success, or an error key string on failure.
-    """
+    """Test connectivity and API privilege. Returns None on success or an error key."""
     client = ArubaIAPClient(host=host, username=username, password=password)
     try:
-        # Step 1: can we log in?
         logged_in = await hass.async_add_executor_job(client.login)
         if not logged_in:
             return "invalid_auth"
-
-        # Step 2: can we actually run a show command? Accounts with no API
-        # privilege will log in but return errors on every command.
         clients = await hass.async_add_executor_job(client.get_clients)
         await hass.async_add_executor_job(client.logout)
-
-        # get_clients returns {} on API error — but also on an empty network.
-        # So we do one more check: if login succeeded but get_clients returned
-        # None (which we map to {}), treat as privilege error.
         if clients is None:
             return "api_access_denied"
-
-        return None  # success
+        return None
     except Exception as err:
-        _LOGGER.debug("Aruba IAP connection test exception: %s", err)
+        LOGGER.debug("Aruba IAP connection test exception: %s", err)
         return "cannot_connect"
 
 
@@ -52,7 +48,7 @@ class ArubaIAPConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     # ------------------------------------------------------------------
-    # Initial setup — Step 1: connection details
+    # Step 1 — Connection details
     # ------------------------------------------------------------------
 
     async def async_step_user(
@@ -83,8 +79,12 @@ class ArubaIAPConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=vol.Schema(
                 {
-                    vol.Required(CONF_HOST, default=(user_input or {}).get(CONF_HOST, "")): str,
-                    vol.Required(CONF_USERNAME, default=(user_input or {}).get(CONF_USERNAME, "")): str,
+                    vol.Required(
+                        CONF_HOST, default=(user_input or {}).get(CONF_HOST, "")
+                    ): str,
+                    vol.Required(
+                        CONF_USERNAME, default=(user_input or {}).get(CONF_USERNAME, "")
+                    ): str,
                     vol.Required(CONF_PASSWORD): str,
                 }
             ),
@@ -92,14 +92,18 @@ class ArubaIAPConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     # ------------------------------------------------------------------
-    # Initial setup — Step 2: tracking preference
+    # Step 2 — Tracking & polling preferences
     # ------------------------------------------------------------------
 
     async def async_step_tracking(
         self, user_input: dict[str, Any] | None = None
     ) -> config_entries.FlowResult:
         if user_input is not None:
-            data = {**self._connection_data, CONF_TRACK_NEW: user_input[CONF_TRACK_NEW]}
+            data = {
+                **self._connection_data,
+                CONF_TRACK_NEW: user_input[CONF_TRACK_NEW],
+                CONF_SCAN_INTERVAL: user_input[CONF_SCAN_INTERVAL],
+            }
             return self.async_create_entry(
                 title=f"Aruba IAP ({self._connection_data[CONF_HOST]})",
                 data=data,
@@ -108,12 +112,19 @@ class ArubaIAPConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="tracking",
             data_schema=vol.Schema(
-                {vol.Optional(CONF_TRACK_NEW, default=DEFAULT_TRACK_NEW): bool}
+                {
+                    vol.Optional(CONF_TRACK_NEW, default=DEFAULT_TRACK_NEW): bool,
+                    vol.Optional(
+                        CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL
+                    ): vol.All(
+                        int, vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL)
+                    ),
+                }
             ),
         )
 
     # ------------------------------------------------------------------
-    # Options flow entry point
+    # Options flow
     # ------------------------------------------------------------------
 
     @staticmethod
@@ -125,10 +136,9 @@ class ArubaIAPConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class ArubaIAPOptionsFlow(config_entries.OptionsFlow):
-    """Options flow — change host/credentials/tracking after setup."""
+    """Options flow — change host/credentials/tracking/polling after setup."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        # NOTE: Do NOT call super().__init__() — it breaks on some HA versions.
         self.config_entry = config_entry
 
     async def async_step_init(
@@ -136,12 +146,14 @@ class ArubaIAPOptionsFlow(config_entries.OptionsFlow):
     ) -> config_entries.FlowResult:
         errors: dict[str, str] = {}
         current = self.config_entry.data
+        current_options = self.config_entry.options
 
         if user_input is not None:
             host = user_input[CONF_HOST].strip()
             username = user_input[CONF_USERNAME].strip()
             password = user_input[CONF_PASSWORD]
             track_new = user_input[CONF_TRACK_NEW]
+            scan_interval = user_input[CONF_SCAN_INTERVAL]
 
             connection_changed = (
                 host != current.get(CONF_HOST)
@@ -162,23 +174,44 @@ class ArubaIAPOptionsFlow(config_entries.OptionsFlow):
                         CONF_USERNAME: username,
                         CONF_PASSWORD: password,
                         CONF_TRACK_NEW: track_new,
+                        CONF_SCAN_INTERVAL: scan_interval,
                     },
                 )
-                return self.async_create_entry(title="", data={CONF_TRACK_NEW: track_new})
-
-        track_new_current = self.config_entry.options.get(
-            CONF_TRACK_NEW,
-            current.get(CONF_TRACK_NEW, DEFAULT_TRACK_NEW),
-        )
+                return self.async_create_entry(
+                    title="",
+                    data={
+                        CONF_TRACK_NEW: track_new,
+                        CONF_SCAN_INTERVAL: scan_interval,
+                    },
+                )
 
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_HOST, default=current.get(CONF_HOST, "")): str,
-                    vol.Required(CONF_USERNAME, default=current.get(CONF_USERNAME, "")): str,
-                    vol.Required(CONF_PASSWORD, default=current.get(CONF_PASSWORD, "")): str,
-                    vol.Optional(CONF_TRACK_NEW, default=track_new_current): bool,
+                    vol.Required(
+                        CONF_USERNAME, default=current.get(CONF_USERNAME, "")
+                    ): str,
+                    vol.Required(
+                        CONF_PASSWORD, default=current.get(CONF_PASSWORD, "")
+                    ): str,
+                    vol.Optional(
+                        CONF_TRACK_NEW,
+                        default=current_options.get(
+                            CONF_TRACK_NEW,
+                            current.get(CONF_TRACK_NEW, DEFAULT_TRACK_NEW),
+                        ),
+                    ): bool,
+                    vol.Optional(
+                        CONF_SCAN_INTERVAL,
+                        default=current_options.get(
+                            CONF_SCAN_INTERVAL,
+                            current.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+                        ),
+                    ): vol.All(
+                        int, vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL)
+                    ),
                 }
             ),
             errors=errors,
