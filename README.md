@@ -58,6 +58,7 @@ Disclaimer: This is an unofficial integration and is not affiliated with or endo
    - **Username** — IAP admin username
    - **Password** — IAP admin password
    - **Track new devices by default** — toggle on/off
+   - **Polling Interval** - Devices are polled every 30 seconds by default. Update if required.
 
 ## Options
 
@@ -67,6 +68,3 @@ After setup, click **Configure** on the integration to change the track-new-devi
 
 Go to **Settings → Devices & Services → Aruba IAP Device Tracker**, click a device entity, then click the pencil icon to give it a friendly name. This is stored in the HA entity registry and persists across restarts.
 
-## Polling Interval
-
-Devices are polled every 30 seconds by default. Change `SCAN_INTERVAL_SECONDS` in `const.py` if needed.
