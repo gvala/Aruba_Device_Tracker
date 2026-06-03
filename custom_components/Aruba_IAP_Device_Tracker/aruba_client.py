@@ -15,11 +15,20 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 _LOGGER = logging.getLogger(__name__)
 
 # Parses each client row from 'show clients' output.
+#
 # Columns: Name  IP  MAC  OS  ESSID  AccessPoint  Channel  Type  Role  IPv6  Signal  Speed
+#
+# Notes:
+#   - Name may contain spaces (e.g. "My Smart TV"), so we match up to the first
+#     run of 2+ spaces rather than using \S+.
+#   - IPv6 may be "--" when not assigned.
+#   - Speed is optional — some rows omit it.
+#   - MAC separators may be ":" or "-".
 _CLIENT_REGEX = re.compile(
-    r"^(?P<name>\S+)\s+"
+    r"^(?P<name>[^\n]*?)\s{2,}"
+    r"(?=(?:\d{1,3}\.){3}\d{1,3}\s)"     # lookahead: must be followed by an IP
     r"(?P<ip>(?:\d{1,3}\.){3}\d{1,3})\s+"
-    r"(?P<mac>(?:[0-9a-f]{2}:){5}[0-9a-f]{2})\s+"
+    r"(?P<mac>(?:[0-9a-f]{2}[:\-]){5}[0-9a-f]{2})\s+"
     r"(?P<os>\S+)\s+"
     r"(?P<essid>\S+)\s+"
     r"(?P<access_point>\S+)\s+"
@@ -27,9 +36,15 @@ _CLIENT_REGEX = re.compile(
     r"(?P<type>\S+)\s+"
     r"(?P<role>\S+)\s+"
     r"(?P<ipv6>\S+)\s+"
-    r"(?P<signal>\S+)\s+"
-    r"(?P<speed>\S+)",
+    r"(?P<signal>\S+)"
+    r"(?:\s+(?P<speed>\S+))?",
     re.IGNORECASE,
+)
+
+# Lines that start with these strings are header/separator rows — skip silently
+_SKIP_PREFIXES = (
+    "name", "----", "client list", "num ", "total",
+    "cli output", "command=", "number of", "info timestamp",
 )
 
 
@@ -93,10 +108,7 @@ class ArubaIAPClient:
     # ------------------------------------------------------------------
 
     def _show_cmd(self, cmd: str) -> str | None:
-        """
-        Run a show command and return the raw CLI output string.
-        Returns None if the command fails (including privilege errors).
-        """
+        """Run a show command and return raw CLI output, or None on failure."""
         if not self._ensure_session():
             return None
 
@@ -125,7 +137,7 @@ class ArubaIAPClient:
                     data.get("Status-code"),
                     data.get("Error message"),
                 )
-                return None  # None = command failed (permissions, bad cmd, etc.)
+                return None
 
             output = data.get("Command output", "")
             return output.replace("\\n", "\n").replace("\\r", "\r")
@@ -137,31 +149,52 @@ class ArubaIAPClient:
 
     def get_clients(self) -> dict[str, dict[str, Any]] | None:
         """
-        Return a dict of connected clients keyed by MAC address.
-        Returns None if the API call itself failed (e.g. no privilege).
+        Return connected clients keyed by MAC address.
+        Returns None if the API call failed (e.g. no privilege).
         Returns {} if the call succeeded but no clients are connected.
         """
         output = self._show_cmd("show clients")
         if output is None:
-            return None  # Distinguish API failure from empty network
+            return None
 
         clients: dict[str, dict[str, Any]] = {}
+        skipped: list[str] = []
+
         for line in output.splitlines():
-            match = _CLIENT_REGEX.match(line.strip())
-            if not match:
+            stripped = line.strip()
+
+            # Skip known header/separator/footer lines silently
+            if not stripped or stripped.lower().startswith(_SKIP_PREFIXES):
                 continue
-            mac = match.group("mac").upper()
-            clients[mac] = {
-                "mac": mac,
-                "name": match.group("name"),
-                "ip": match.group("ip"),
-                "os": match.group("os"),
-                "essid": match.group("essid"),
-                "access_point": match.group("access_point"),
-                "channel": match.group("channel"),
-                "signal": match.group("signal"),
-                "speed": match.group("speed"),
-            }
+
+            # Match on the RAW line (not stripped) so that empty-name rows
+            # retain their leading whitespace, allowing the regex to find
+            # the name=="" + spaces + IP pattern correctly.
+            match = _CLIENT_REGEX.match(line)
+            if match:
+                mac = match.group("mac").upper().replace("-", ":")
+                name = match.group("name").strip() or mac
+                clients[mac] = {
+                    "mac": mac,
+                    "name": name,
+                    "ip": match.group("ip"),
+                    "os": match.group("os"),
+                    "essid": match.group("essid"),
+                    "access_point": match.group("access_point"),
+                    "channel": match.group("channel"),
+                    "signal": match.group("signal"),
+                    "speed": match.group("speed"),
+                }
+            elif stripped:
+                skipped.append(stripped)
+
+        if skipped:
+            _LOGGER.debug(
+                "Aruba IAP: %d line(s) did not match client pattern:\n%s",
+                len(skipped),
+                "\n".join(f"  > {s}" for s in skipped),
+            )
+
         _LOGGER.debug("Aruba IAP found %d clients", len(clients))
         return clients
 
