@@ -111,7 +111,7 @@ class ArubaIAPClient:
                 self.host,
             )
             return False
-        except Exception:  # noqa: BLE001
+        except Exception:
             _LOGGER.exception("Aruba IAP login failed unexpectedly")
             return False
         else:
@@ -157,6 +157,7 @@ class ArubaIAPClient:
             f"?iap_ip_addr={self.host}&cmd={encoded_cmd}&sid={self._sid}"
         )
 
+        output: str | None = None
         try:
             resp = requests.get(
                 url,
@@ -192,10 +193,9 @@ class ArubaIAPClient:
                     data.get("Status-code"),
                     data.get("Error message"),
                 )
-                return None
-
-            output = data.get("Command output", "")
-            return output.replace("\\n", "\n").replace("\\r", "\r")
+            else:
+                raw = data.get("Command output", "")
+                output = raw.replace("\\n", "\n").replace("\\r", "\r")
 
         except requests.exceptions.JSONDecodeError:
             _LOGGER.warning(
@@ -204,25 +204,23 @@ class ArubaIAPClient:
                 cmd,
             )
             self._sid = None
-            return None
         except requests.exceptions.Timeout:
             _LOGGER.warning(
                 "Aruba IAP timed out running cmd '%s' — will retry next poll",
                 cmd,
             )
             self._sid = None
-            return None
         except requests.exceptions.ConnectionError:
             _LOGGER.warning(
                 "Aruba IAP connection error running cmd '%s' — AP may be unreachable",
                 cmd,
             )
             self._sid = None
-            return None
-        except Exception:  # noqa: BLE001
+        except Exception:
             _LOGGER.exception("Aruba IAP show-cmd unexpected exception")
             self._sid = None
-            return None
+
+        return output
 
     def get_clients(self) -> dict[str, dict[str, Any]] | None:
         """
