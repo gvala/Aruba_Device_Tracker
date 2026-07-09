@@ -12,6 +12,8 @@ import requests
 import urllib3
 from homeassistant.helpers.device_registry import format_mac
 
+from .legacy_ssl import get_legacy_session
+
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 _LOGGER = logging.getLogger(__name__)
@@ -76,6 +78,7 @@ class ArubaIAPClient:
         self.base_url = f"https://{host}:{port}/rest"
         self._headers = {"Content-Type": "application/json"}
         self._sid: str | None = None
+        self._session = get_legacy_session()
 
     # ------------------------------------------------------------------
     # Auth
@@ -86,7 +89,7 @@ class ArubaIAPClient:
         url = f"{self.base_url}/login"
         payload = json.dumps({"user": self.username, "passwd": self.password})
         try:
-            resp = requests.post(
+            resp = self._session.post(
                 url,
                 headers=self._headers,
                 data=payload,
@@ -128,7 +131,7 @@ class ArubaIAPClient:
         if not self._sid:
             return
         with contextlib.suppress(Exception):
-            requests.post(
+            self._session.post(
                 f"{self.base_url}/logout",
                 headers=self._headers,
                 data=json.dumps({"sid": self._sid}),
@@ -160,7 +163,7 @@ class ArubaIAPClient:
 
         output: str | None = None
         try:
-            resp = requests.get(
+            resp = self._session.get(
                 url,
                 headers=self._headers,
                 verify=False,  # noqa: S501
@@ -179,7 +182,7 @@ class ArubaIAPClient:
                     f"{self.base_url}/show-cmd"
                     f"?iap_ip_addr={self.host}&cmd={encoded_cmd}&sid={self._sid}"
                 )
-                resp = requests.get(
+                resp = self._session.get(
                     url,
                     headers=self._headers,
                     verify=False,  # noqa: S501
